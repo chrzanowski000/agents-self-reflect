@@ -1,0 +1,28 @@
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "2024:2024"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2024/ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  ui:
+    build:
+      context: ./agent-chat-ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:2024
+      NEXT_PUBLIC_ASSISTANT_ID: self_reflection_agent
+    depends_on:
+      agent:
+        condition: service_healthy

@@ -1,0 +1,12 @@
+.env
+.git
+.gitignore
+.claude
+.pytest_cache
+.pycache
+__pycache__
+*.pyc
+*.pyo
+tests/
+agent-chat-ui/
+README.md

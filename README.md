@@ -1,9 +1,58 @@
-# Simple LangGraph Agent with Self-Reflection
+# LangGraph Self-Reflection Agent
 
-This project contains a minimal LangGraph agent that:
-1. Generates an answer.
-2. Reflects on the answer.
-3. Loops to improve it until approved or max iterations are reached.
+This project contains a LangGraph agent that iteratively generates and improves answers through a four-node graph:
+
+1. **Search Decision** — an LLM decides whether a web search is needed for the current task and iteration, respecting a configurable `max_web_searches` budget per turn. On each new conversation turn all per-turn counters reset automatically.
+2. **Web Search** *(optional)* — if search is required, [Tavily](https://tavily.com) fetches up-to-date external context (with exponential-backoff retry on transient errors) and appends it to the agent's `web_context`.
+3. **Generate** — a generation agent writes or improves the draft answer, informed by accumulated `web_context` and any prior reviewer feedback. Inputs and outputs are filtered through PII middleware that masks emails, credit card numbers, IP addresses, and MAC addresses.
+4. **Reflect** — a reflection agent reviews the draft for correctness, completeness, and clarity. If approved, the answer is finalised; otherwise it provides actionable feedback and the loop repeats — up to `max_iterations` times (default 3, configurable 1–10).
+
+```
+        ┌─────────────────┐
+        │  search_decision │◄──────────────────┐
+        └────────┬────────┘                    │
+                 │                             │
+        search_needed?                         │
+        ┌────yes─┴──no────┐                    │
+        ▼                 ▼                    │
+  ┌───────────┐     ┌──────────┐               │
+  │ web_search│────►│ generate │               │
+  └───────────┘     └────┬─────┘               │
+                         ▼                     │
+                   ┌──────────┐                │
+                   │ reflect  │                │
+                   └────┬─────┘                │
+                        │                      │
+               approved / max_iterations?      │
+               ┌───yes──┴──no─────────────────►┘
+               ▼
+             [END]
+```
+
+## Docker (recommended)
+
+Run both the agent and the chat UI with a single command:
+
+```bash
+docker compose up --build
+```
+
+Then open **http://localhost:3000** in your browser.
+
+> Make sure your `.env` file is populated before running (see [Environment](#environment) below). The compose file reads it automatically for the backend; API keys are never exposed to the frontend container.
+
+Services started:
+| Service | URL |
+|---------|-----|
+| Chat UI (Next.js) | http://localhost:3000 |
+| LangGraph API | http://localhost:2024 |
+| LangSmith | https://smith.langchain.com/studio/?baseUrl=http://localhost:2024 |
+
+
+To stop:
+```bash
+docker compose down
+```
 
 ## Files
 - `agent.py`: LangGraph workflow with generate/reflect loop.
