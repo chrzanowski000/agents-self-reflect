@@ -36,7 +36,7 @@ This project contains a LangGraph agent that iteratively generates and improves 
 Secrets are injected directly from 1Password as environment variables — no file is ever created:
 
 ```bash
-op run --env-file=.env.tpl -- docker compose up --build --remove-orphans
+op run --env-file=.env_tpl -- docker compose up --build --remove-orphans
 ```
 
 > Requires `op` CLI signed in. `.env.tpl` contains only 1Password references.
