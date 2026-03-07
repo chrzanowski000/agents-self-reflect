@@ -3,7 +3,8 @@
     "."
   ],
   "graphs": {
-    "self_reflection_agent": "./agent.py:app"
+    "self_reflection_agent": "./agent.py:app",
+    "self_reflection_agent_v2": "./agent.py:app"
   },
   "env": ".env"
 }

@@ -29,6 +29,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:2024
       NEXT_PUBLIC_ASSISTANT_ID: self_reflection_agent
+      LANGGRAPH_API_URL: http://agent:2024
     depends_on:
       agent:
         condition: service_healthy
