@@ -57,6 +57,7 @@ class Config:
     # ── research_agent node models ──────────────────────────────────────
     research_planner_model: str = ""
     research_synthesizer_model: str = ""
+    research_filter_model: str = ""
 
     @classmethod
     def from_env(cls) -> Config:
@@ -127,6 +128,10 @@ class Config:
                 "RESEARCH_SYNTHESIZER_MODEL", "RESEARCH_MODEL",
                 fallback=global_model,
             ),
+            research_filter_model=resolve_model(
+                "RESEARCH_FILTER_MODEL", "RESEARCH_MODEL",
+                fallback=global_model,
+            ),
         )
 
     def log_models(self) -> None:
@@ -150,6 +155,7 @@ class Config:
             "│\n"
             "│ research_agent\n"
             f"│   planner           : {self.research_planner_model}\n"
+            f"│   filter            : {self.research_filter_model}\n"
             f"│   synthesizer       : {self.research_synthesizer_model}\n"
             "└────────────────────────────────────────────────────────────┘",
             file=sys.stderr,

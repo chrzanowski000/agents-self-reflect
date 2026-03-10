@@ -129,6 +129,12 @@ def get_synthesizer_model() -> ChatOpenAI:
     return _make_model(cfg.research_synthesizer_model)
 
 
+@lru_cache(maxsize=1)
+def get_filter_model() -> ChatOpenAI:
+    """Model used by the filter_results node."""
+    return _make_model(cfg.research_filter_model)
+
+
 # ---------------------------------------------------------------------------
 # Search helpers
 # ---------------------------------------------------------------------------
@@ -432,6 +438,56 @@ def execute_searches(state: ResearchState) -> dict:
     return {"search_results": unique_results}
 
 
+def filter_results(state: ResearchState) -> dict:
+    """Use an LLM to drop search results that are not relevant to the topic."""
+    topic = state.get("topic", "")
+    results: list[dict] = state.get("search_results", [])
+
+    if not results:
+        return {}
+
+    # Format results for the filter prompt
+    lines: list[str] = []
+    for i, r in enumerate(results, 1):
+        lines.append(
+            f"[{i}] ({r.get('source', '?')}) {r.get('title', 'No title')}\n"
+            f"    {r.get('snippet', '')[:300]}"
+        )
+    results_text = "\n\n".join(lines)
+
+    filter_prompt = (
+        f"You are a research relevance filter.\n"
+        f"Topic: {topic}\n\n"
+        f"Below are {len(results)} search results. Return a JSON array of the 1-based indices "
+        f"of results that are clearly relevant to the topic. "
+        f"Drop results that are off-topic, too generic, or clearly unrelated.\n"
+        f"Return ONLY the JSON array, e.g. [1, 3, 5].\n\n"
+        f"{results_text}"
+    )
+
+    logger.info("Filtering %d results for relevance to topic: %r", len(results), topic[:80])
+    try:
+        raw = get_filter_model().invoke([HumanMessage(content=filter_prompt)]).content
+        if not isinstance(raw, str):
+            raw = str(raw)
+        match = re.search(r"\[.*?\]", raw, re.DOTALL)
+        if match:
+            indices: list[int] = json.loads(match.group())
+            # Keep only valid 1-based indices
+            filtered = [results[i - 1] for i in indices if isinstance(i, int) and 1 <= i <= len(results)]
+        else:
+            filtered = results
+        logger.info("Relevance filter: kept %d / %d results", len(filtered), len(results))
+        if not filtered:
+            logger.warning("Filter dropped all results — keeping originals")
+            filtered = results
+    except Exception as exc:
+        logger.warning("Relevance filter failed (%s) — keeping all results", exc)
+        filtered = results
+
+    return {"search_results": filtered}
+
+
 def synthesize_research(state: ResearchState) -> dict:
     """Synthesize all search results into a structured research brief."""
     topic = state.get("topic", "")
@@ -507,6 +563,7 @@ def build_graph() -> StateGraph:
     graph = StateGraph(ResearchState)
     graph.add_node("plan_research", plan_research)
     graph.add_node("execute_searches", execute_searches)
+    graph.add_node("filter_results", filter_results)
     graph.add_node("synthesize", synthesize_research)
 
     graph.set_entry_point("plan_research")
@@ -515,7 +572,8 @@ def build_graph() -> StateGraph:
         route_after_plan,
         {"execute_searches": "execute_searches", "__end__": END},
     )
-    graph.add_edge("execute_searches", "synthesize")
+    graph.add_edge("execute_searches", "filter_results")
+    graph.add_edge("filter_results", "synthesize")
     graph.add_edge("synthesize", END)
 
     return graph.compile()
