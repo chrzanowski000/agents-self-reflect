@@ -43,7 +43,7 @@ except ConfigError as _cfg_err:
 # State schema
 # ---------------------------------------------------------------------------
 
-_DEFAULT_MAX_SEARCHES = 5
+_DEFAULT_MAX_SEARCHES = 10
 
 # TODO: remove this constraint when ready to use all sources
 _ALLOWED_SOURCES: set[str] | None = {"arxiv"}  # set to None to allow all sources
@@ -516,9 +516,10 @@ def generate_arxiv_queries(state: ResearchState) -> dict:
 
 
 def apply_date_filter(state: ResearchState) -> dict:
-    """Assemble search_plan from arxiv_queries. date_filter is left intact for _arxiv_search."""
+    """Assemble search_plan from arxiv_queries, embedding arXiv submittedDate clause when date_filter is set."""
     queries = state.get("arxiv_queries", [])
     max_searches = state.get("max_searches", _DEFAULT_MAX_SEARCHES)
+    date_filter: dict = state.get("date_filter", {})
 
     if not queries:
         topic = state.get("topic", "")
@@ -529,8 +530,22 @@ def apply_date_filter(state: ResearchState) -> dict:
         return {"search_plan": [], "blocked": True, "block_reason": "No search queries could be generated."}
 
     queries = queries[:max_searches]
-    search_plan = [{"source": "arxiv", "query": q} for q in queries]
-    logger.info("apply_date_filter: %d search tasks", len(search_plan))
+
+    date_clause = ""
+    if date_filter:
+        start = date_filter.get("start_date", "")
+        end = date_filter.get("end_date", "")
+        if start and end:
+            from_ts = start.replace("-", "") + "0000"
+            to_ts = end.replace("-", "") + "2359"
+            date_clause = f"+AND+submittedDate:[{from_ts}+TO+{to_ts}]"
+            logger.info("apply_date_filter: embedding date clause %s", date_clause)
+
+    search_plan = [
+        {"source": "arxiv", "query": q + date_clause}
+        for q in queries
+    ]
+    logger.info("apply_date_filter: %d search tasks (date_clause=%r)", len(search_plan), date_clause)
     return {"search_plan": search_plan}
 
 
@@ -559,6 +574,66 @@ def execute_searches(state: ResearchState) -> dict:
     unique_results = [r for r in all_results if not (r.get("url") in seen or seen.add(r.get("url", "")))]
     logger.info("Collected %d results (%d after dedup)", len(all_results), len(unique_results))
     return {"search_results": unique_results}
+
+
+def validate_date_range(state: ResearchState) -> dict:
+    """Remove arXiv results whose submission date (from URL ID) falls outside date_filter range.
+
+    arXiv paper IDs post-2007: YYMM.NNNNN — first 4 digits encode submission year+month.
+    Example: https://arxiv.org/abs/2401.12345v1 → 2024-01.
+    Non-arXiv results and results with unparseable IDs are kept unchanged.
+    If no date_filter is set, returns immediately without modifying results.
+    """
+    date_filter: dict = state.get("date_filter", {})
+    if not date_filter:
+        return {}
+
+    start = date_filter.get("start_date", "")
+    end = date_filter.get("end_date", "")
+    if not start or not end:
+        return {}
+
+    results: list[dict] = state.get("search_results", [])
+    if not results:
+        return {}
+
+    try:
+        start_year, start_month = int(start[:4]), int(start[5:7])
+        end_year, end_month = int(end[:4]), int(end[5:7])
+    except (ValueError, IndexError):
+        logger.warning("validate_date_range: could not parse date_filter bounds, skipping")
+        return {}
+
+    _arxiv_id_re = re.compile(r"/abs/(\d{4})\.")
+
+    kept: list[dict] = []
+    removed = 0
+    for result in results:
+        if result.get("source") != "arxiv":
+            kept.append(result)
+            continue
+        url = result.get("url", "")
+        m = _arxiv_id_re.search(url)
+        if not m:
+            kept.append(result)
+            continue
+        yymm = m.group(1)
+        paper_year = 2000 + int(yymm[:2])
+        paper_month = int(yymm[2:])
+        if (start_year, start_month) <= (paper_year, paper_month) <= (end_year, end_month):
+            kept.append(result)
+        else:
+            logger.info(
+                "validate_date_range: removing out-of-range result %s (%04d-%02d outside %s–%s)",
+                url[:60], paper_year, paper_month, start, end,
+            )
+            removed += 1
+
+    logger.info("validate_date_range: kept %d / %d results (%d removed)", len(kept), len(results), removed)
+    if not kept:
+        logger.warning("validate_date_range: all results removed — keeping originals")
+        return {}
+    return {"search_results": kept}
 
 
 def filter_results(state: ResearchState) -> dict:
@@ -740,6 +815,7 @@ def build_graph() -> StateGraph:
     graph.add_node("generate_arxiv_queries", generate_arxiv_queries)
     graph.add_node("apply_date_filter", apply_date_filter)
     graph.add_node("execute_searches", execute_searches)
+    graph.add_node("validate_date_range", validate_date_range)
     graph.add_node("filter_results", filter_results)
     graph.add_node("synthesize", synthesize_research)
 
@@ -753,7 +829,8 @@ def build_graph() -> StateGraph:
         route_after_apply_date_filter,
         {"execute_searches": "execute_searches", "__end__": END},
     )
-    graph.add_edge("execute_searches", "filter_results")
+    graph.add_edge("execute_searches", "validate_date_range")
+    graph.add_edge("validate_date_range", "filter_results")
     graph.add_edge("filter_results", "synthesize")
     graph.add_edge("synthesize", END)
 

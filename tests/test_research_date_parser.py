@@ -145,3 +145,133 @@ def test_parse_dates_no_messages():
     state = {"messages": []}
     result = ra.parse_dates(state)
     assert result["date_filter"] == {}
+
+
+# ---------------------------------------------------------------------------
+# apply_date_filter tests
+# ---------------------------------------------------------------------------
+
+
+def test_apply_date_filter_embeds_date_clause():
+    state = {
+        "arxiv_queries": ["nuclear reactor safety", "fusion energy"],
+        "date_filter": {"start_date": "2026-01-01", "end_date": "2026-01-15"},
+        "max_searches": 5,
+    }
+    result = ra.apply_date_filter(state)
+    plan = result["search_plan"]
+    assert len(plan) == 2
+    for task in plan:
+        assert task["source"] == "arxiv"
+        assert "+AND+submittedDate:[202601010000+TO+202601152359]" in task["query"]
+
+
+def test_apply_date_filter_no_date_filter():
+    state = {
+        "arxiv_queries": ["neural networks", "deep learning"],
+        "date_filter": {},
+        "max_searches": 5,
+    }
+    result = ra.apply_date_filter(state)
+    plan = result["search_plan"]
+    assert len(plan) == 2
+    assert plan[0]["query"] == "neural networks"
+    assert plan[1]["query"] == "deep learning"
+    for task in plan:
+        assert "submittedDate" not in task["query"]
+
+
+def test_apply_date_filter_respects_max_searches():
+    state = {
+        "arxiv_queries": ["a", "b", "c", "d", "e"],
+        "date_filter": {},
+        "max_searches": 3,
+    }
+    result = ra.apply_date_filter(state)
+    assert len(result["search_plan"]) == 3
+
+
+def test_apply_date_filter_no_queries_blocks():
+    state = {
+        "arxiv_queries": [],
+        "topic": "",
+        "date_filter": {},
+        "max_searches": 5,
+    }
+    result = ra.apply_date_filter(state)
+    assert result["blocked"] is True
+    assert result["search_plan"] == []
+
+
+# ---------------------------------------------------------------------------
+# validate_date_range tests
+# ---------------------------------------------------------------------------
+
+
+def test_validate_date_range_keeps_in_range():
+    state = {
+        "date_filter": {"start_date": "2024-01-01", "end_date": "2024-06-30"},
+        "search_results": [
+            {"source": "arxiv", "title": "Paper A", "url": "https://arxiv.org/abs/2403.12345", "snippet": ""},
+        ],
+    }
+    result = ra.validate_date_range(state)
+    assert result["search_results"][0]["title"] == "Paper A"
+
+
+def test_validate_date_range_removes_out_of_range():
+    state = {
+        "date_filter": {"start_date": "2024-01-01", "end_date": "2024-06-30"},
+        "search_results": [
+            {"source": "arxiv", "title": "Old Paper", "url": "https://arxiv.org/abs/2312.99999", "snippet": ""},
+            {"source": "arxiv", "title": "In Range", "url": "https://arxiv.org/abs/2403.12345", "snippet": ""},
+        ],
+    }
+    result = ra.validate_date_range(state)
+    assert len(result["search_results"]) == 1
+    assert result["search_results"][0]["title"] == "In Range"
+
+
+def test_validate_date_range_no_date_filter_returns_empty():
+    state = {
+        "date_filter": {},
+        "search_results": [
+            {"source": "arxiv", "title": "Any Paper", "url": "https://arxiv.org/abs/2403.12345", "snippet": ""},
+        ],
+    }
+    result = ra.validate_date_range(state)
+    assert result == {}
+
+
+def test_validate_date_range_all_removed_returns_originals():
+    state = {
+        "date_filter": {"start_date": "2025-01-01", "end_date": "2025-12-31"},
+        "search_results": [
+            {"source": "arxiv", "title": "Old", "url": "https://arxiv.org/abs/2101.00001", "snippet": ""},
+        ],
+    }
+    result = ra.validate_date_range(state)
+    # Returns {} so state is left unchanged (originals preserved)
+    assert result == {}
+
+
+def test_validate_date_range_keeps_non_arxiv():
+    state = {
+        "date_filter": {"start_date": "2024-01-01", "end_date": "2024-06-30"},
+        "search_results": [
+            {"source": "web", "title": "Web Result", "url": "https://example.com/page", "snippet": ""},
+        ],
+    }
+    result = ra.validate_date_range(state)
+    assert result["search_results"][0]["title"] == "Web Result"
+
+
+def test_validate_date_range_unparseable_url_kept():
+    state = {
+        "date_filter": {"start_date": "2024-01-01", "end_date": "2024-06-30"},
+        "search_results": [
+            {"source": "arxiv", "title": "Old Format", "url": "https://arxiv.org/abs/math/0501234", "snippet": ""},
+        ],
+    }
+    result = ra.validate_date_range(state)
+    assert result["search_results"][0]["title"] == "Old Format"
