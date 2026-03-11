@@ -514,16 +514,20 @@ def generate_semantic_queries(state: ResearchState) -> dict:
                 words = [w for w in raw.split() if w not in _FILLER_WORDS]
                 candidates.append(" ".join(words[:6]))
 
-    # Fallback: bare domains
+    # Bare terms: each domain, method, concept as its own query
     for d in domains:
         candidates.append(d)
+    for m in methods:
+        candidates.append(m)
+    for c in concepts:
+        candidates.append(c)
 
     # Normalize: lowercase, remove filler words, deduplicate
     seen: dict[str, None] = {}
     for q in candidates:
         words = [w.lower() for w in q.split() if w.lower() not in _FILLER_WORDS]
         normalized = " ".join(words)
-        if normalized and len(words) >= 2 and normalized not in seen:
+        if normalized and normalized not in seen:
             seen[normalized] = None
 
     queries = list(seen)[:query_count]
