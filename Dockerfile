@@ -8,6 +8,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY agents/ ./agents/
+COPY api/ ./api/
 COPY config.py langgraph.json ./
 
 EXPOSE 2024

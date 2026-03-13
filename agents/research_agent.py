@@ -48,16 +48,16 @@ except ConfigError as _cfg_err:
 # ---------------------------------------------------------------------------
 
 # Minimum cosine similarity (0–1) a result must score against the query embedding to be kept
-SIMILARITY_THRESHOLD = 0.7
+SIMILARITY_THRESHOLD = 0.5
 
 # How many search queries to generate and execute per research run
-QUERY_COUNT = 20
+QUERY_COUNT = 5
 
 # How many results to return per individual search query
-RESULTS_PER_QUERY = 40
+RESULTS_PER_QUERY = 10
 
 # When date-filtering, fetch up to this many results from S2 before trimming to RESULTS_PER_QUERY
-S2_DATE_FETCH_LIMIT = 100
+S2_DATE_FETCH_LIMIT = 10
 
 # --- arXiv (kept for _arxiv_search, currently unused — _ALLOWED_SOURCES = {"semantic_scholar"}) ---
 _ARXIV_PAGE_SIZE = 10   # results per paginated page
@@ -1022,6 +1022,34 @@ def route_after_rank_results(
 # ---------------------------------------------------------------------------
 
 
+def persist_run(state: ResearchState) -> ResearchState:
+    """Final node: persist this research run to the database and disk. Pass-through."""
+    try:
+        from agents.persistence import (
+            complete_run,
+            create_run,
+            find_or_create_query,
+            persist_sources,
+            write_disk_artifacts,
+        )
+        from api.database import SessionLocal, init_db
+
+        init_db()
+        db = SessionLocal()
+        try:
+            topic = state.get("topic", "")
+            query = find_or_create_query(db, topic)
+            run = create_run(db, query)
+            complete_run(db, run, state.get("synthesis") or "", state.get("date_filter"))
+            persist_sources(db, run, state.get("search_results") or [])
+            write_disk_artifacts(run, query, state)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.error("persist_run failed (non-fatal): %s", exc)
+    return state
+
+
 def build_graph() -> StateGraph:
     """Build and compile the LangGraph research agent graph."""
     graph = StateGraph(ResearchState)
@@ -1053,7 +1081,13 @@ def build_graph() -> StateGraph:
         route_after_rank_results,
         {"synthesize": "synthesize", "__end__": END},
     )
-    graph.add_edge("synthesize", END)
+    _persist_enabled = os.getenv("PERSIST_RUNS", "false").lower() == "true"
+    graph.add_node("persist_run", persist_run)
+    if _persist_enabled:
+        graph.add_edge("synthesize", "persist_run")
+        graph.add_edge("persist_run", END)
+    else:
+        graph.add_edge("synthesize", END)
 
     return graph.compile()
 
