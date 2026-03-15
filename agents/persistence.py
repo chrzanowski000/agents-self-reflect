@@ -97,6 +97,7 @@ def fail_run(db: Session, run: Run, error: str) -> Run:
 def persist_sources(db: Session, run: Run, search_results: list[dict]) -> None:
     """Insert one Source row per result dict from ResearchState.search_results."""
     now = _now()
+    sources = []
     for result in search_results:
         authors = result.get("authors", [])
         if isinstance(authors, list):
@@ -110,7 +111,7 @@ def persist_sources(db: Session, run: Run, search_results: list[dict]) -> None:
             if key in result:
                 metadata[key] = result[key]
 
-        source = Source(
+        sources.append(Source(
             run_id=run.id,
             query_id=run.query_id,
             source_type=result.get("source"),
@@ -122,8 +123,8 @@ def persist_sources(db: Session, run: Run, search_results: list[dict]) -> None:
             similarity_score=result.get("similarity_score"),
             metadata_json=json.dumps(metadata) if metadata else None,
             created_at=now,
-        )
-        db.add(source)
+        ))
+    db.add_all(sources)
     db.commit()
 
 

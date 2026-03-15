@@ -69,29 +69,39 @@ def _run_to_out(run: Run, include_sources: bool = False) -> RunOut:
 
 @app.get("/research/queries", response_model=list[QueryOut])
 def list_queries(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
-    queries = db.query(Query).order_by(Query.updated_at.desc()).offset(skip).limit(limit).all()
-    result = []
-    for q in queries:
-        run_count = db.query(func.count(Run.id)).filter(Run.query_id == q.id).scalar() or 0
-        last_run = (
-            db.query(Run.started_at)
-            .filter(Run.query_id == q.id)
-            .order_by(Run.started_at.desc())
-            .first()
+    # Single query with subqueries to avoid N+1
+    run_count_sq = (
+        db.query(Run.query_id, func.count(Run.id).label("run_count"))
+        .group_by(Run.query_id)
+        .subquery()
+    )
+    last_run_sq = (
+        db.query(Run.query_id, func.max(Run.started_at).label("last_run_at"))
+        .group_by(Run.query_id)
+        .subquery()
+    )
+    rows = (
+        db.query(Query, run_count_sq.c.run_count, last_run_sq.c.last_run_at)
+        .outerjoin(run_count_sq, Query.id == run_count_sq.c.query_id)
+        .outerjoin(last_run_sq, Query.id == last_run_sq.c.query_id)
+        .order_by(Query.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return [
+        QueryOut(
+            id=q.id,
+            raw_query=q.raw_query,
+            slug=q.slug,
+            folder_path=q.folder_path,
+            created_at=q.created_at,
+            updated_at=q.updated_at,
+            run_count=rc or 0,
+            last_run_at=lr,
         )
-        result.append(
-            QueryOut(
-                id=q.id,
-                raw_query=q.raw_query,
-                slug=q.slug,
-                folder_path=q.folder_path,
-                created_at=q.created_at,
-                updated_at=q.updated_at,
-                run_count=run_count,
-                last_run_at=last_run[0] if last_run else None,
-            )
-        )
-    return result
+        for q, rc, lr in rows
+    ]
 
 
 @app.get("/research/queries/{query_id}", response_model=QueryDetailOut)

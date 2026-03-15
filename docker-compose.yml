@@ -87,8 +87,6 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/research
     depends_on:
-      duckling:
-        condition: service_started
       postgres:
         condition: service_healthy
 
