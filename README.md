@@ -5,7 +5,6 @@ research-agent-platform is a full-stack multi-agent AI platform that runs autono
 The platform demonstrates production-style AI infrastructure: a Next.js frontend, Python LangGraph agent backend, FastAPI persistence service, and supporting services (Duckling, PostgreSQL) deployed on Kubernetes with Kustomize overlays. It includes automated Docker builds, secret management via 1Password, and deployment workflows for both local Kubernetes (Docker Desktop) and AWS EKS.
 
 This project showcases practical engineering patterns for multi-agent systems, including self-reflection loops, semantic query generation, search result validation, ranking, and synthesis, along with infrastructure required to run agent-based applications in a containerized environment.
-
 ## Architecture
 
 ```mermaid
