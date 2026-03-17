@@ -34,6 +34,8 @@ postgres:
   storageClass: standard-rwo
 
 # Set ingress.host to your real domain (e.g. agent.example.com)
+# host: "" means catch-all (no domain needed) — access via the load balancer's external IP.
+# Set host to a real domain if you have one (e.g. agent.example.com).
 ingress:
   enabled: true
-  host: agent.example.com
+  host: ""

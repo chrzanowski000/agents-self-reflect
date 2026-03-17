@@ -8,6 +8,7 @@ Two deployment paths are supported:
 |------|--------|------|--------|
 | **Local / Dev** | Docker Desktop Kubernetes | Kustomize | `scripts/deploy-local.sh` |
 | **Production** | AWS EKS | Kustomize | `scripts/deploy-eks.sh` |
+| **GKE** | Google Kubernetes Engine | Kustomize or Helm | `scripts/deploy-gke.sh` / `scripts/deploy-helm-gke.sh` |
 | **Helm (alt)** | Any K8s | Helm | Manual |
 
 ---
@@ -281,6 +282,7 @@ kubectl describe pvc postgres-data
 
 ## See Also
 
+- [GKE Deployment](Manual-Deployment-GKE.md) — Google Kubernetes Engine + Artifact Registry, step-by-step
 - [Docker Deployment](Manual-Deployment-Docker.md) — Legacy Docker Compose
 - [Configuration and Secrets](Manual-Configuration-and-Secrets.md) — All env vars and secret handling
 - [Operations and Troubleshooting](Manual-Operations-and-Troubleshooting.md) — Day-2 ops and log viewing

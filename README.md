@@ -140,6 +140,24 @@ kubectl apply -k infrastructure/k8s/dev
 
 Open http://localhost:3000 (after `kubectl port-forward svc/chat-ui 3000:3000`). → Full setup, Helm, and EKS: [Kubernetes Deployment](wiki/Manual-Deployment-Kubernetes.md)
 
+### GKE (Google Kubernetes Engine)
+
+```bash
+# 1. Build and push images to Artifact Registry
+GCP_PROJECT=my-project GCP_REGION=europe-west1 IMAGE_TAG=v1 \
+  ./scripts/build-and-push-gke.sh
+
+# 2. Inject secrets (requires 1Password CLI)
+GKE_CLUSTER=my-cluster GCP_PROJECT=my-project GCP_REGION=europe-west1 \
+  ./scripts/inject-secrets-gke.sh
+
+# 3. Deploy
+GCP_PROJECT=my-project GCP_REGION=europe-west1 GKE_CLUSTER=my-cluster IMAGE_TAG=v1 \
+  ./scripts/deploy-gke.sh
+```
+
+→ Full GKE setup, Artifact Registry, Helm option, and troubleshooting: [GKE Deployment](wiki/Manual-Deployment-GKE.md)
+
 ---
 
 ## Configuration
@@ -186,6 +204,7 @@ The wiki covers everything in depth. Start here if you're onboarding or deployin
 | [Manual: Agent Graphs](wiki/Manual-Agent-Graphs.md) | LangGraph node-by-node docs for all three agents |
 | [Manual: Deployment — Docker](wiki/Manual-Deployment-Docker.md) | Docker Compose setup and startup |
 | [Manual: Deployment — Kubernetes](wiki/Manual-Deployment-Kubernetes.md) | K8s local, Helm, and EKS deployment |
+| [Manual: Deployment — GKE](wiki/Manual-Deployment-GKE.md) | Google Kubernetes Engine + Artifact Registry |
 | [Manual: Configuration and Secrets](wiki/Manual-Configuration-and-Secrets.md) | All env vars, secret management, 1Password flow |
 | [Manual: Operations and Troubleshooting](wiki/Manual-Operations-and-Troubleshooting.md) | Day-2 ops, logs, restarts, common failures |
 | [Demonstration](wiki/Demonstration.md) | End-to-end demo guide and example prompts |
