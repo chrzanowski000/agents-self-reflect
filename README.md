@@ -142,6 +142,19 @@ Open http://localhost:3000 (after `kubectl port-forward svc/chat-ui 3000:3000`).
 
 ### GKE (Google Kubernetes Engine)
 
+Two cluster modes — choose one before deploying:
+
+**Autopilot** (recommended — no idle node costs, nodes scale to zero):
+```bash
+gcloud container clusters create-auto agents-cluster --region europe-west1
+```
+
+**Standard** (fixed nodes, ~100 GB SSD boot disk per node):
+```bash
+gcloud container clusters create agents-cluster \
+  --region europe-west1 --num-nodes 1 --machine-type e2-standard-2 --disk-size 50
+```
+
 ```bash
 # 1. Build and push images to Artifact Registry
 GCP_PROJECT=my-project GCP_REGION=europe-west1 IMAGE_TAG=v1 \

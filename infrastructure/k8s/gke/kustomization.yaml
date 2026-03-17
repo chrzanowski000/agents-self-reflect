@@ -25,21 +25,21 @@ patches:
   - patch: |-
       - op: replace
         path: /spec/replicas
-        value: 2
+        value: 1
     target:
       kind: Deployment
       name: chat-ui
   - patch: |-
       - op: replace
         path: /spec/replicas
-        value: 2
+        value: 1
     target:
       kind: Deployment
       name: langgraph-api
   - patch: |-
       - op: replace
         path: /spec/replicas
-        value: 2
+        value: 1
     target:
       kind: Deployment
       name: persistence-api
@@ -54,6 +54,59 @@ patches:
     target:
       kind: Deployment
       name: langgraph-api
+  # Resource limits — tuned down for GKE cost savings
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+    target:
+      kind: Deployment
+      name: langgraph-api
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+    target:
+      kind: Deployment
+      name: chat-ui
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 128Mi
+    target:
+      kind: Deployment
+      name: persistence-api
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+    target:
+      kind: Deployment
+      name: duckling
   # Patch postgres StorageClass to standard-rwo for GKE
   - patch: |-
       - op: replace

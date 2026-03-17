@@ -11,8 +11,10 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - {{- if .Values.ingress.host }}host: {{ .Values.ingress.host }}
-      {{- end }}http:
+    - {{- if .Values.ingress.host }}
+      host: {{ .Values.ingress.host }}
+      {{- end }}
+      http:
         paths:
           - path: /api(/|$)(research.*)
             pathType: ImplementationSpecific

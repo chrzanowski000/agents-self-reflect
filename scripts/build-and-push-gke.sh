@@ -39,19 +39,28 @@ fi
 echo ""
 
 echo "==> Building chat-ui..."
+# NEXT_PUBLIC_API_URL is baked into the image at build time (Next.js requirement).
+# Pass it explicitly if you know the external IP/domain, e.g.:
+#   NEXT_PUBLIC_API_URL=http://34.77.x.x/api ./scripts/build-and-push-gke.sh
+# If not set, defaults to /api (relative URL — works when UI is served from the same domain).
+CHAT_UI_API_URL="${NEXT_PUBLIC_API_URL:-/api}"
 docker build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_API_URL="${CHAT_UI_API_URL}" \
   -f "${REPO_ROOT}/infrastructure/docker/chat-ui.Dockerfile" \
   -t "${REGISTRY}/chat-ui:${IMAGE_TAG}" \
   "${REPO_ROOT}/services/chat-ui/"
 
 echo "==> Building langgraph-api..."
 docker build \
+  --platform linux/amd64 \
   -f "${REPO_ROOT}/infrastructure/docker/langgraph-api.Dockerfile" \
   -t "${REGISTRY}/langgraph-api:${IMAGE_TAG}" \
   "${REPO_ROOT}/services/langgraph-api/"
 
 echo "==> Building persistence-api..."
 docker build \
+  --platform linux/amd64 \
   -f "${REPO_ROOT}/infrastructure/docker/persistence-api.Dockerfile" \
   -t "${REGISTRY}/persistence-api:${IMAGE_TAG}" \
   "${REPO_ROOT}/services/persistence-api/"

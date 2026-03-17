@@ -105,6 +105,11 @@ kubectl create secret generic app-secrets \
 
 **Important:** `app-secrets` is in-memory only in the dev overlay — it is not written to a YAML file in the repo.
 
+The script respects `K8S_NAMESPACE` (defaults to `default`). For Helm deployments where pods run in the `agents` namespace, set it explicitly:
+```bash
+K8S_NAMESPACE=agents scripts/inject-secrets.sh
+```
+
 ---
 
 ## Kustomize Overlay Structure
@@ -261,6 +266,13 @@ op signin  # re-authenticate to 1Password
 scripts/inject-secrets.sh
 kubectl rollout restart deployment/langgraph-api deployment/persistence-api
 ```
+
+### Chat UI calls wrong API URL (CORS errors / "agent.local" on GKE)
+**Cause:** `NEXT_PUBLIC_*` variables in Next.js are **baked into the JS bundle at build time** — Kubernetes pod env vars do not affect them at runtime. The local build script (`build-images.sh`) defaults `NEXT_PUBLIC_API_URL=http://agent.local/api`, which is correct for local Docker Desktop (where `/etc/hosts` maps `agent.local` to `127.0.0.1`).
+
+For GKE, the `build-and-push-gke.sh` script defaults to `/api` (a relative URL) instead, so the chat-ui works from any IP or domain without needing `?apiUrl=` in the browser URL.
+
+If you see this error after switching environments, rebuild the GKE image with a new tag using `build-and-push-gke.sh`, then clear any stale `?apiUrl=` from your browser URL bar.
 
 ### Ingress returns 404
 **Cause:** NGINX ingress controller not installed, or `/etc/hosts` not updated.
