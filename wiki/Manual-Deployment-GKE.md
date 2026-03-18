@@ -271,7 +271,7 @@ kubectl get secret app-secrets -n default  # Kustomize
 
 ## Part 5a — Deploy with Kustomize
 
-Kustomize deploys all resources into the **`default` namespace.
+Kustomize deploys all resources into the **`default`** namespace.
 
 ### Step 9 — Install the nginx ingress controller
 
@@ -362,7 +362,7 @@ Helm deploys all resources into the **`agents` namespace**.
 
 ### Step 9 — Install the nginx ingress controller
 
-Same as Kustomize Step 9 above.
+Same as Part 5a Step 9 — install the nginx ingress controller before deploying.
 
 ### Step 10 — (Optional) Set a hostname
 
@@ -470,10 +470,12 @@ kubectl logs <pod-name> -n <namespace>
 
 ### `CrashLoopBackOff` — exec format error (Apple Silicon)
 
-**Cause:** Images were built on an Apple Silicon Mac (ARM64) but GKE nodes run x86_64. Pod logs show:
+**Symptom:** Pod logs show:
 ```
 exec /usr/local/bin/docker-entrypoint.sh: exec format error
 ```
+
+**Cause:** Images were built on an Apple Silicon Mac (ARM64) but GKE nodes run x86_64.
 
 **Fix:** The build script already includes `--platform linux/amd64`. Rebuild with a new tag and redeploy:
 
@@ -607,7 +609,7 @@ kubectl logs postgres-0 -n agents
 
 ### Ingress returns 404
 
-**Cause:** nginx ingress controller not registered the Ingress resource, or `ingressClassName: nginx` mismatch.
+**Cause:** nginx ingress controller has not registered the Ingress resource, or there is an `ingressClassName: nginx` mismatch.
 
 **Diagnose:**
 ```bash
@@ -617,7 +619,14 @@ kubectl get ingressclass
 kubectl describe ingress agents-ingress -n <namespace>
 ```
 
-### Chat UI calls wrong API URL (CORS errors / "agent.local")
+**Fix:** Ensure the nginx ingress controller is installed (Part 5a/5b Step 9) and that `ingressClassName: nginx` is set in the Ingress resource. If the class is missing, reinstall the controller:
+```bash
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace
+```
+
+### Chat UI shows CORS errors or requests go to "agent.local"
 
 **Symptom:** The browser console shows CORS errors or failed requests to `http://agent.local/api/...` even though your cluster is running at a different IP.
 
@@ -651,16 +660,19 @@ After redeployment, clear any stale `?apiUrl=` query parameter from your browser
 
 > **Note for local Docker Desktop:** `build-images.sh` (local build script) still uses `http://agent.local/api` as default, which is correct for local development. Only GKE builds use `/api`.
 
-**Variant symptom:** `Error: URL constructor: /api/threads is not a valid URL`
+### Error: URL constructor: /api/threads is not a valid URL
 
-This occurs when the image correctly uses `/api` but the chat-ui JavaScript was passing it directly to the LangGraph SDK, which requires an absolute URL. This was a bug in `Stream.tsx` and `Thread.tsx` — both providers now resolve relative URLs to absolute using `window.location.origin` before passing them to the SDK.
+**Symptom:** The chat UI shows `An error occurred. Please try again. Error: URL constructor: /api/threads is not a valid URL`.
 
-If you see this error, ensure you are running image tag `v1.4` or later (the fix was shipped in that build). Rebuild and redeploy if needed:
+**Cause:** The image correctly uses `/api` as a relative URL, but the LangGraph SDK requires an absolute URL. This was a bug in `Stream.tsx` and `Thread.tsx` — both providers were passing the relative URL directly to the SDK without resolving it to an absolute URL first.
+
+**Fix:** Both providers now resolve relative URLs using `window.location.origin` before passing them to the SDK. This fix ships in image tag `v1.4` or later. Rebuild and redeploy if you are on an older tag:
 
 ```bash
 GCP_PROJECT=YOUR_PROJECT_ID GCP_REGION=europe-west1 IMAGE_TAG=v1.4 \
   ./scripts/build-and-push-gke.sh
 
+# Helm:
 GCP_PROJECT=YOUR_PROJECT_ID GCP_REGION=europe-west1 \
   GKE_CLUSTER=agents-cluster IMAGE_TAG=v1.4 AUTOPILOT=1 \
   ./scripts/deploy-helm-gke.sh
@@ -691,8 +703,13 @@ kubectl scale deployment langgraph-api --replicas=0
 ### Scale back up
 
 ```bash
+# Helm (agents namespace)
 kubectl scale deployment persistence-api --replicas=1 -n agents
 kubectl scale deployment langgraph-api --replicas=1 -n agents
+
+# Kustomize (default namespace)
+kubectl scale deployment persistence-api --replicas=1
+kubectl scale deployment langgraph-api --replicas=1
 ```
 
 ### Scale postgres (StatefulSet)
@@ -725,6 +742,10 @@ kubectl delete -k infrastructure/k8s/gke
 
 # Remove deployed resources — Helm:
 helm uninstall agents -n agents
+
+# Remove the nginx ingress controller (installed separately):
+helm uninstall ingress-nginx -n ingress-nginx
+kubectl delete namespace ingress-nginx
 
 # Delete secrets:
 kubectl delete secret app-secrets -n agents   # Helm
