@@ -558,6 +558,53 @@ kubectl describe pvc postgres-data-postgres-0
 
 If the storage class name differs, update `storageClassName` in `infrastructure/k8s/gke/langgraph-data-pvc.yaml` (Kustomize) or `values-gke.yaml` (Helm).
 
+### Postgres `CrashLoopBackOff` — `initdb` directory not empty / `lost+found`
+
+**Symptom:** `postgres-0` keeps restarting. Logs show:
+
+```
+initdb: error: directory "/var/lib/postgresql/data" exists but is not empty
+initdb: detail: It contains a lost+found directory, perhaps due to it being a mount point.
+initdb: hint: Using a mount point directly as the data directory is not recommended.
+Create a subdirectory under the mount point.
+```
+
+`persistence-api` also crashes because it can't reach postgres:
+```
+psycopg2.OperationalError: could not translate host name "postgres" to address: Name or service not known
+```
+
+**Root cause:** GKE provisions PVCs with an ext4 filesystem that places a `lost+found` directory at the volume root. When postgres is mounted directly at `/var/lib/postgresql/data`, it sees this directory and refuses to initialize. This happens on **every fresh PVC** on GKE.
+
+**The permanent fix** is `PGDATA=/var/lib/postgresql/data/pgdata` — already set in the Helm chart's StatefulSet. This tells postgres to use a subdirectory inside the mount, so `lost+found` is ignored.
+
+**Important:** `PGDATA` is an env var in the StatefulSet, **not baked into the Docker image** — rebuilding images does nothing. The fix only takes effect when the pod restarts with the updated StatefulSet *and* has a fresh PVC. An existing PVC that was created before `PGDATA` was set will still fail because the old volume layout is incompatible.
+
+**Steps to resolve:**
+
+```bash
+# 1. Scale down postgres
+kubectl scale statefulset postgres --replicas=0 -n agents
+
+# 2. Delete the stale PVC (required — the PGDATA fix alone is not enough on old volumes)
+kubectl delete pvc postgres-data-postgres-0 -n agents
+
+# 3. Scale back up — Kubernetes provisions a new clean PVC
+#    This time postgres writes into pgdata/ subdirectory and ignores lost+found
+kubectl scale statefulset postgres --replicas=1 -n agents
+
+# 4. Wait for postgres to become Ready, then restart persistence-api
+kubectl rollout restart deployment/persistence-api -n agents
+```
+
+Verify postgres started cleanly:
+```bash
+kubectl logs postgres-0 -n agents
+# Should end with: database system is ready to accept connections
+```
+
+> **Warning:** Deleting the PVC destroys all stored data. Only do this on a fresh or test deployment where data loss is acceptable.
+
 ### Ingress returns 404
 
 **Cause:** nginx ingress controller not registered the Ingress resource, or `ingressClassName: nginx` mismatch.
@@ -603,6 +650,70 @@ GCP_PROJECT=YOUR_PROJECT_ID GCP_REGION=europe-west1 \
 After redeployment, clear any stale `?apiUrl=` query parameter from your browser URL — old tabs may have it cached.
 
 > **Note for local Docker Desktop:** `build-images.sh` (local build script) still uses `http://agent.local/api` as default, which is correct for local development. Only GKE builds use `/api`.
+
+**Variant symptom:** `Error: URL constructor: /api/threads is not a valid URL`
+
+This occurs when the image correctly uses `/api` but the chat-ui JavaScript was passing it directly to the LangGraph SDK, which requires an absolute URL. This was a bug in `Stream.tsx` and `Thread.tsx` — both providers now resolve relative URLs to absolute using `window.location.origin` before passing them to the SDK.
+
+If you see this error, ensure you are running image tag `v1.4` or later (the fix was shipped in that build). Rebuild and redeploy if needed:
+
+```bash
+GCP_PROJECT=YOUR_PROJECT_ID GCP_REGION=europe-west1 IMAGE_TAG=v1.4 \
+  ./scripts/build-and-push-gke.sh
+
+GCP_PROJECT=YOUR_PROJECT_ID GCP_REGION=europe-west1 \
+  GKE_CLUSTER=agents-cluster IMAGE_TAG=v1.4 AUTOPILOT=1 \
+  ./scripts/deploy-helm-gke.sh
+```
+
+Open the app in a **fresh tab** with no `?apiUrl=` in the URL.
+
+---
+
+## Scaling
+
+### Scale a deployment to zero (pause)
+
+Useful when you want to stop a service temporarily without deleting it.
+
+```bash
+# Helm (agents namespace)
+kubectl scale deployment persistence-api --replicas=0 -n agents
+kubectl scale deployment langgraph-api --replicas=0 -n agents
+kubectl scale deployment chat-ui --replicas=0 -n agents
+kubectl scale deployment duckling --replicas=0 -n agents
+
+# Kustomize (default namespace)
+kubectl scale deployment persistence-api --replicas=0
+kubectl scale deployment langgraph-api --replicas=0
+```
+
+### Scale back up
+
+```bash
+kubectl scale deployment persistence-api --replicas=1 -n agents
+kubectl scale deployment langgraph-api --replicas=1 -n agents
+```
+
+### Scale postgres (StatefulSet)
+
+```bash
+kubectl scale statefulset postgres --replicas=0 -n agents  # pause
+kubectl scale statefulset postgres --replicas=1 -n agents  # resume
+```
+
+> **Note:** Scaling postgres to zero stops the database. `persistence-api` and `langgraph-api` will error until postgres is back up. If you scale postgres back up, restart the dependent services:
+> ```bash
+> kubectl rollout restart deployment/persistence-api deployment/langgraph-api -n agents
+> ```
+
+### Scale to multiple replicas
+
+```bash
+kubectl scale deployment langgraph-api --replicas=3 -n agents
+```
+
+Replicas share the same node pool — on Autopilot, GKE automatically provisions additional nodes as needed.
 
 ---
 
