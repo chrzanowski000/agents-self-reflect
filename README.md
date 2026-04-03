@@ -2,7 +2,7 @@
 
 A full-stack multi-agent AI platform that runs autonomous research workflows using LangGraph-based agents. The system combines a chat interface, agent orchestration backend, research pipeline, and persistence layer to allow users to run complex queries where agents search, analyze, validate, and synthesize information before producing a final answer.
 
-> **Full documentation lives in the [project wiki](wiki/Home.md).** The sections below give you a quick mental model — follow the wiki links to go deeper on any topic.
+> **Full documentation lives in the [project wiki](https://github.com/chrzanowski000/research-agent-platform/wiki).** The sections below give you a quick mental model — follow the wiki links to go deeper on any topic.
 
 ---
 
